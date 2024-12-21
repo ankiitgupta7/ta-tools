@@ -10,7 +10,8 @@ from pathlib import Path
 from gradescope_api.client import GradescopeClient
 from gradescope_api.course import GradescopeCourse
 
-settings_path = Path("settings.toml")
+tools_dir = Path(__file__).parent
+settings_path = Path(f"{tools_dir}/settings.toml")
 if not settings_path.exists():
     print("No settings found, be sure to run ./gs-config.py first!")
     exit(0)
@@ -27,6 +28,7 @@ parser.add_argument("names", nargs="*", help="student names")
 parser.add_argument("-d", "--days", type=int, default=settings["default-length"], help="Number of days after deadline to extend the assignment. Does not stack with other extensions.")
 # probably default to the most recent assignment? for now just leave it as this
 parser.add_argument("-s", "--string", required=True, help="String for assignment titles to contain (e.g. -s hw4 to apply extension to all assignments with 'hw4' in the title)")
+# parser.add_argument("-r", "--regex", help="Regex string to match assignment titles to")
 
 args = parser.parse_args()
 if len(args.names) == 0:
@@ -51,6 +53,6 @@ for raw_name in args.names:
         continue
     else:
         email = roster[student_name]
-    print(f"{student_name} ({email})")
+    print(f"  {student_name} ({email})")
     for assignment in assignments:
         assignment.apply_extension(roster[student_name], args.days)

@@ -11,7 +11,8 @@ from dotenv import load_dotenv
 from gradescope_api.client import GradescopeClient
 from piazza_api import Piazza
 
-settings_path = Path("settings.toml")
+tools_dir = Path(__file__).parent
+settings_path = Path(f"{tools_dir}/settings.toml")
 
 def read_piazza_roster(csv_path):
     roster = {}
@@ -31,7 +32,7 @@ def read_piazza_roster(csv_path):
                 roster[pz_name.lower()] = email
     return roster
 
-def make_course_entry(identifier, gs_id, roster, course_path=Path("courses")):
+def make_course_entry(identifier, gs_id, roster, course_path=Path(f"{tools_dir}/courses")):
     settings = tomllib.loads(settings_path.read_text())
     if identifier in settings["courses"]:
         print(f"WARNING: Course with identifier \"{identifier}\" already exists, overwriting")
@@ -61,7 +62,7 @@ def initialize_settings():
         return
     print("Settings file not found, initializing to defaults.")
     default_settings = {
-        "course_path" : "courses",
+        "course_path" : f"{tools_dir}/courses",
         "courses" : [],
         "default-to-newest" : True,
         "default-length" : 5
