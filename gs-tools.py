@@ -8,6 +8,7 @@ import tomli_w
 
 from pathlib import Path
 from dotenv import load_dotenv
+from difflib import get_close_matches
 
 from gradescope_api.client import GradescopeClient
 from gradescope_api.course import GradescopeCourse
@@ -184,7 +185,7 @@ def main():
     if len(sys.argv) > 1:
         command = sys.argv[1]
         if command == "extend":
-            main_extend()
+            main_extend(sys.argv[2:])
         elif command == "configure":
             main_configure()
         else:
@@ -193,9 +194,9 @@ def main():
         print("Supply a command followed by arguments (e.g. ./gs-tools.py extend -s hw1 student1)")
 
 def main_configure():
-    print("Not implemented yet!")
+    # interactively configure
     
-def main_extend():
+def main_extend(argv):
     global settings
     parser = argparse.ArgumentParser()
     parser.add_argument("-i", "--id", choices=settings["courses"], default=settings["default-course"], help="Course identifier")
@@ -205,7 +206,7 @@ def main_extend():
     parser.add_argument("-s", "--string", required=True, help="String for assignment titles to contain (e.g. -s hw4 to apply extension to all assignments with 'hw4' in the title)")
     # parser.add_argument("-r", "--regex", help="Regex string to match assignment titles to")
 
-    args = parser.parse_args()
+    args = parser.parse_args(argv)
     if len(args.names) == 0:
         print("No names supplied, exiting..")
         exit(0)
@@ -220,17 +221,39 @@ def main_extend():
     for assign in assignments:
         print("  ", assign.get_name())
     print("For the following students:")
+    
+    roster_names = list(roster.keys())
+    ambig_names = []
+    
     for raw_name in args.names:
         student_name = raw_name.lower()
         if student_name not in roster:
-            print(f"Could not find {student_name} in the roster")
-            # TODO: try to find a reasonable match in the roster?
-            continue
+            close_matches = get_close_matches(student_name, roster_names, n=5)
+            if len(close_matches) == 1:
+                email = roster[close_matches[1]]
+            if len(close_matches) == 0:
+                print(f"{student_name}: could not find in the roster")
+                continue
+            else:
+                print(f"{student_name}: At least {len(close_matches)} found")
+                ambig_names.append((student_name, close_matches))
+                continue
         else:
             email = roster[student_name]
         print(f"  {student_name} ({email})")
         for assignment in assignments:
             assignment.apply_extension(roster[student_name], args.days)
+
+    for (ambig_name,options) in ambig_names:
+        print(f"{ambig_name}: Found the following close matches:")
+        ix = selection_helper(options + ["(None)"], msg="Select the number for the correct student (or none if none of these names match)")
+        if ix == len(options):
+            print(f"Skipping {ambig_name}")
+        else:
+            student_name = options[ix]
+            print(f"  {student_name} ({roster[student_name]})")
+            for assignment in assignments:
+                assignment.apply_extension(roster[student_name], args.days)
 
 if __name__ == "__main__":
     main()
