@@ -184,9 +184,9 @@ def main():
     if len(sys.argv) > 1:
         command = sys.argv[1]
         if command == "extend":
-            main_extend()
+            main_extend(sys.argv[2:])
         elif command == "configure":
-            main_configure()
+            main_configure(sys.argv[2:])
         else:
             print("Right now extend is the only command.")
     else:
@@ -195,17 +195,17 @@ def main():
 def main_configure():
     print("Not implemented yet!")
     
-def main_extend():
+def main_extend(argv):
     global settings
     parser = argparse.ArgumentParser()
-    parser.add_argument("-i", "--id", choices=settings["courses"], default=settings["default-course"], help="Course identifier")
     parser.add_argument("names", nargs="*", help="student names")
+    parser.add_argument("-i", "--id", choices=settings["courses"], default=settings["default-course"], help="Course identifier")
     parser.add_argument("-d", "--days", type=int, default=settings["default-length"], help="Number of days after deadline to extend the assignment. Does not stack with other extensions.")
     # probably default to the most recent assignment? for now just leave it as this
     parser.add_argument("-s", "--string", required=True, help="String for assignment titles to contain (e.g. -s hw4 to apply extension to all assignments with 'hw4' in the title)")
     # parser.add_argument("-r", "--regex", help="Regex string to match assignment titles to")
 
-    args = parser.parse_args()
+    args = parser.parse_args(argv)
     if len(args.names) == 0:
         print("No names supplied, exiting..")
         exit(0)
