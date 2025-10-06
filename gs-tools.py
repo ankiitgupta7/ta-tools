@@ -223,7 +223,8 @@ def main():
 def main_configure():
     # interactively configure additional courses
     # e.g. adding/modifying students
-    # 
+    #
+    pass
     
 def main_extend(argv):
     global settings
@@ -259,8 +260,9 @@ def main_extend(argv):
         if student_name not in roster:
             close_matches = get_close_matches(student_name, roster_names, n=5)
             if len(close_matches) == 1:
-                email = roster[close_matches[1]]
-            if len(close_matches) == 0:
+                email = roster[close_matches[0]]
+                print(f"{student_name}: found one match: {close_matches[0]} ({email})")
+            elif len(close_matches) == 0:
                 print(f"{student_name}: could not find in the roster")
                 continue
             else:
@@ -271,7 +273,7 @@ def main_extend(argv):
             email = roster[student_name]
         print(f"  {student_name} ({email})")
         for assignment in assignments:
-            assignment.apply_extension(roster[student_name], args.days)
+            assignment.apply_extension(email, args.days)
 
     for (ambig_name,options) in ambig_names:
         print(f"{ambig_name}: Found the following close matches:")
