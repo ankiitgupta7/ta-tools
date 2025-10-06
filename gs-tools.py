@@ -8,6 +8,7 @@ import tomli_w
 
 from pathlib import Path
 from dotenv import load_dotenv
+from difflib import get_close_matches
 
 from gradescope_api.client import GradescopeClient
 from gradescope_api.course import GradescopeCourse
@@ -29,6 +30,16 @@ def initialize_settings(settings_path):
     settings_path.write_text(tomli_w.dumps(default_settings))
 
 # config things
+def normalize_name(name_str):
+    split_name = name_str.split(",")
+    if len(split_name) == 1:
+        name = split_name[0]
+    elif len(name) == 2:
+        name = f"{split_name[1].strip()} {split_name[0].strip()}"
+    else:
+        name = f"{split_name[1].strip()} {split_name[0].strip()}"
+    return name
+
 def read_piazza_roster(csv_path):
     roster = {}
     with open(csv_path, newline="") as handle:
@@ -36,15 +47,22 @@ def read_piazza_roster(csv_path):
         header=next(roster_reader)
         for entry in roster_reader:
             if entry[2] == "Student":
-                name = entry[0].split(",")
-                if len(name) == 1:
-                    pz_name = name[0]
-                elif len(name) == 2:
-                    pz_name = f"{name[1].strip()} {name[0].strip()}"
-                else:
-                    pz_name = f"{name[1].strip()} {name[0].strip()}"
+                name = normalize_name(entry[0]).lower()
                 email = entry[1]
-                roster[pz_name.lower()] = email
+                roster[name] = email
+    return roster
+
+def read_gradescope_roster(csv_path):
+    roster = {}
+    with open(csv_path) as handle:
+        roster_reader = csv.reader(handle)
+        header = next(roster_reader)
+        # name, SID, email, role
+        for entry in roster_reader:
+            if entry[3] == "Student":
+                name = normalize_name(entry[0])
+                email = entry[2]
+                roster[name] = email
     return roster
 
 def make_course_entry(identifier, gs_id, roster, course_path=Path(f"{tools_dir}/courses")):
@@ -118,7 +136,17 @@ def interactive_setup():
     ix = selection_helper(gs_course_opt_labels, msg="Enter the number (i) of the course to use for configuring:")
     gs_course = gs_courses[ix]
 
-    print("\nDo you have csv of the roster?\nYou can obtain one from piazza as follows:\nManage Class->Enroll Students->Download Roster as CSV\notherwise this will connect to piazza and try to build a roster that way.")
+    print("""Do you have csv of the roster?
+You can obtain one from gradescope or piazza
+For gradescope:
+    Roster -> More -> Download Roster
+For piazza:
+    Manage Class -> Enroll Students -> Download Roster as CSV
+Otherwise this will connect to piazza and try to build a roster that way.
+""")
+    # connect to piazza if available and pull the roster from there
+    # connect to gradescope if piazza is not available (student names sometimes don't match)
+    
     have_csv = yes_no_helper()
 
     if have_csv:
@@ -193,7 +221,9 @@ def main():
         print("Supply a command followed by arguments (e.g. ./gs-tools.py extend -s hw1 student1)")
 
 def main_configure():
-    print("Not implemented yet!")
+    # interactively configure additional courses
+    # e.g. adding/modifying students
+    # 
     
 def main_extend(argv):
     global settings
@@ -220,17 +250,39 @@ def main_extend(argv):
     for assign in assignments:
         print("  ", assign.get_name())
     print("For the following students:")
+    
+    roster_names = list(roster.keys())
+    ambig_names = []
+    
     for raw_name in args.names:
         student_name = raw_name.lower()
         if student_name not in roster:
-            print(f"Could not find {student_name} in the roster")
-            # TODO: try to find a reasonable match in the roster?
-            continue
+            close_matches = get_close_matches(student_name, roster_names, n=5)
+            if len(close_matches) == 1:
+                email = roster[close_matches[1]]
+            if len(close_matches) == 0:
+                print(f"{student_name}: could not find in the roster")
+                continue
+            else:
+                print(f"{student_name}: At least {len(close_matches)} found")
+                ambig_names.append((student_name, close_matches))
+                continue
         else:
             email = roster[student_name]
         print(f"  {student_name} ({email})")
         for assignment in assignments:
             assignment.apply_extension(roster[student_name], args.days)
+
+    for (ambig_name,options) in ambig_names:
+        print(f"{ambig_name}: Found the following close matches:")
+        ix = selection_helper(options + ["(None)"], msg="Select the number for the correct student (or none if none of these names match)")
+        if ix == len(options):
+            print(f"Skipping {ambig_name}")
+        else:
+            student_name = options[ix]
+            print(f"  {student_name} ({roster[student_name]})")
+            for assignment in assignments:
+                assignment.apply_extension(roster[student_name], args.days)
 
 if __name__ == "__main__":
     main()
