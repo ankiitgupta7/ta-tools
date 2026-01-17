@@ -7,7 +7,6 @@ import tomllib
 import tomli_w
 
 from pathlib import Path
-from dotenv import load_dotenv
 from gradescope_api.client import GradescopeClient
 from piazza_api import Piazza
 
@@ -31,6 +30,7 @@ def read_piazza_roster(csv_path):
                 email = entry[1]
                 roster[pz_name.lower()] = email
     return roster
+
 
 def make_course_entry(identifier, gs_id, roster, course_path=Path(f"{tools_dir}/courses")):
     settings = tomllib.loads(settings_path.read_text())
@@ -56,6 +56,13 @@ def make_course_entry(identifier, gs_id, roster, course_path=Path(f"{tools_dir}/
         settings["default-course"] = identifier
     settings_path.write_text(tomli_w.dumps(settings))
 
+def load_env():
+    from dotenv import load_dotenv
+    load_dotenv()
+    
+def valid_env():
+    load_env()
+    return True
 
 def initialize_settings():
     if settings_path.exists():
@@ -82,7 +89,10 @@ def yes_no_helper():
     return option
 
 def interactive_setup():
-    load_dotenv()
+    # make sure the gradescope settings are loaded in
+    if not valid_env():
+        print("Could not find environment variables even after attempting to load .env, please set the corresponding environment variables:")
+        exit(1)
     settings = tomllib.loads(settings_path.read_text())
 
     print("Connecting to gradescope...\n")

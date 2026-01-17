@@ -65,7 +65,7 @@ def read_gradescope_roster(csv_path):
                 roster[name] = email
     return roster
 
-def make_course_entry(identifier, gs_id, roster, course_path=Path(f"{tools_dir}/courses")):
+def make_course_entry(identifier, gs_id, roster, course_path=Path(f"{tools_dir}/courses"), pz_id=None):
     settings = tomllib.loads(settings_path.read_text())
     if identifier in settings["courses"]:
         print(f"WARNING: Course with identifier \"{identifier}\" already exists, overwriting")
@@ -79,6 +79,8 @@ def make_course_entry(identifier, gs_id, roster, course_path=Path(f"{tools_dir}/
         "gradescope-id" : gs_id,
         "roster" : roster
     }
+    if pz_id:
+        cfg["piazza-id"] = pz_id
     cfg_path.write_text(tomli_w.dumps(cfg))
     
     if "default-course" not in settings:
@@ -90,11 +92,16 @@ def make_course_entry(identifier, gs_id, roster, course_path=Path(f"{tools_dir}/
     settings_path.write_text(tomli_w.dumps(settings))
 
 # cli things
-def yes_no_helper():
+def yes_no_helper(default=False):
     option = None
+    yes_char = "Y" if default else "y"
+    no_char = "N" if default is not None and not default else "n"
+    prompt = f"({yes_char}/{no_char}): "
     while option is None:
-        option = input("(y/N): ").lower()
-        if len(option) == 0 or option[0] == "n":
+        option = input(prompt).strip().lower()
+        if len(option) == 0:
+            option = default
+        elif option[0] == "n":
             option = False
         elif option[0] == "y":
             option = True
@@ -133,28 +140,17 @@ def interactive_setup():
     
     longest_name_len = max(map(lambda x: len(x.get_name()), gs_courses))
     gs_course_opt_labels = [f"{course.get_name():<{longest_name_len}}\t{course.get_term()}\t{course.course_id}" for course in gs_courses]
-    ix = selection_helper(gs_course_opt_labels, msg="Enter the number (i) of the course to use for configuring:")
+    ix = selection_helper(gs_course_opt_labels, msg="Enter the number (i) of the course to use:")
     gs_course = gs_courses[ix]
 
-    print("""Do you have csv of the roster?
-You can obtain one from gradescope or piazza
-For gradescope:
-    Roster -> More -> Download Roster
-For piazza:
-    Manage Class -> Enroll Students -> Download Roster as CSV
-Otherwise this will connect to piazza and try to build a roster that way.
-""")
     # connect to piazza if available and pull the roster from there
-    # connect to gradescope if piazza is not available (student names sometimes don't match)
-    
-    have_csv = yes_no_helper()
+    # connect to gradescope if piazza is not available (student names sometimes don't match between what is displayed on piazza)
+    # alternatively, upload a manual csv
 
-    if have_csv:
-        roster_path = Path(input("Enter path to roster csv: "))
-        while not roster_path.exists():
-            roster_path = Path(input("Path not found, try again: "))
-        roster = read_piazza_roster(roster_path)
-    else:
+    print("Would you like to automatically pull the roster from gradescope or piazza?")
+    auto_roster = yes_no_helper(True)
+
+    if auto_roster:
         print("\nConnecting to piazza...")
         pz_client = Piazza()
         pz_client.user_login(email=os.environ["PZ_EMAIL"], password=os.environ["PZ_PASSWORD"])
@@ -183,9 +179,14 @@ Otherwise this will connect to piazza and try to build a roster that way.
                 # probably implement a check to see if that student even is enrolled in gradescope
             else:
                 roster[name] = email
+
         if sans_emails:
             print(f"Warning: could not find an email for the following students. Check to make sure they aren't enrolled on gradescope\n  {'\n  '.join(sans_emails)}")
-    
+    else:
+        roster_path = Path(input("Enter path to roster csv: "))
+        while not roster_path.exists():
+            roster_path = Path(input("Path not found, try again: "))
+        roster = read_piazza_roster(roster_path) # try piazza, then try gradescope
     identifier = None
     while identifier is None:
         identifier = input("\nEnter an identifier to use for this course, no spaces:\n").strip()
@@ -206,33 +207,44 @@ def main():
         initialize_settings(settings_path)
     settings = tomllib.loads(settings_path.read_text())
     load_dotenv()
+    
     if len(settings["courses"]) == 0:
-        print("No courses found, entering setup..")
+        print("No courses found, entering interactive setup..")
         interactive_setup()
+
     if len(sys.argv) > 1:
         command = sys.argv[1]
         if command == "extend":
             main_extend(sys.argv[2:])
         elif command == "configure":
             main_configure(sys.argv[2:])
+        # elif command == "update":
+        #    main_update(sys.argv[2:])
+        elif command in {"--help", "-help", "-h", "help"}:
+            print("""
+gs-tools
+    configure: Configuration tools (set up a course)
+    extend:    Extend the deadline for a homework assignment
+""")
         else:
-            print("Right now extend is the only command.")
+            print(f"Command '{command}' not recognized")
     else:
         print("Supply a command followed by arguments (e.g. ./gs-tools.py extend -s hw1 student1)")
 
-def main_configure():
+def main_configure(argv):
     # interactively configure additional courses
-    # e.g. adding/modifying students
-    #
-    pass
     
+    # e.g. adding/modifying students
+    pass
+
 def main_extend(argv):
     global settings
     parser = argparse.ArgumentParser()
     parser.add_argument("names", nargs="*", help="student names")
     parser.add_argument("-i", "--id", choices=settings["courses"], default=settings["default-course"], help="Course identifier")
     parser.add_argument("-d", "--days", type=int, default=settings["default-length"], help="Number of days after deadline to extend the assignment. Does not stack with other extensions.")
-    # probably default to the most recent assignment? for now just leave it as this
+    parser.add_argument("-H", "--hours", type=int, default=0, help="Number of hours to extend deadline (usually just for daylight savings...)")
+    # probably default to the most recent "group" of assignments? for now just leave it as this
     parser.add_argument("-s", "--string", required=True, help="String for assignment titles to contain (e.g. -s hw4 to apply extension to all assignments with 'hw4' in the title)")
     # parser.add_argument("-r", "--regex", help="Regex string to match assignment titles to")
 
@@ -273,7 +285,7 @@ def main_extend(argv):
             email = roster[student_name]
         print(f"  {student_name} ({email})")
         for assignment in assignments:
-            assignment.apply_extension(email, args.days)
+            assignment.apply_extension(email, args.days, num_hours=args.hours)
 
     for (ambig_name,options) in ambig_names:
         print(f"{ambig_name}: Found the following close matches:")
@@ -285,6 +297,10 @@ def main_extend(argv):
             print(f"  {student_name} ({roster[student_name]})")
             for assignment in assignments:
                 assignment.apply_extension(roster[student_name], args.days)
+
+def main_update(argv):
+    # Update course roster or settings
+    pass
 
 if __name__ == "__main__":
     main()
