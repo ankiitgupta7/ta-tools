@@ -1,0 +1,8 @@
+course_path = "/mnt/gs21/scratch/guptaa23/Active/TA830/ta-tools/courses"
+courses = [
+    "./gs-config.py",
+    "1219999",
+]
+default-to-newest = true
+default-length = 5
+default-course = "1219999"
